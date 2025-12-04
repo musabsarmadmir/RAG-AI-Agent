@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.venv/
+venv/
+
+.vscode/
+*.code-workspace
+
+.env
+local.env
+
+logs/
+
+# Exclude large/ephemeral indexes
+rag-data/**/index/**
+rag-data/**/db/**
+
+# Git
+.git/
+.gitignore

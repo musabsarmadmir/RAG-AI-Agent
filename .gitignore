@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+
+# Packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# Testing & coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+coverage.xml
+.tox/
+
+# Logs & runtime
+logs/
+*.log
+*.pid
+*.pid.lock
+
+# IDE/editor
+.vscode/
+*.code-workspace
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment & secrets
+.env
+local.env
+.env.*
+
+# Jupyter/Notebooks
+.ipynb_checkpoints/
+
+# Cache
+.cache/
+
+# FAISS indexes & local vector stores
+*.faiss
+*.faiss.index
+rag-data/**/index/**
+rag-data/**/db/**
+
+# Uploaded files staging (if used)
+uploads/
+
+# Azure/Container
+*.swp
+
+# PyInstaller
+*.spec
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+
+# Node/frontend (if added later)
+node_modules/
