@@ -1,0 +1,3 @@
+Provider Fatima sample document.
+This document is used to test the pipeline.
+Contains sample content about services, fees and contact details.

@@ -4,7 +4,8 @@ import shutil
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-src_pdf = ROOT / 'Fatima_AI_Services-1.pdf'
+# Adjusted to new location under sample-files
+src_pdf = ROOT / 'sample-files' / 'Fatima_AI_Services-1.pdf'
 provider = 'Fatima'
 dest_docs = ROOT / 'rag-data' / 'providers' / provider / 'docs'
 dest_excel = ROOT / 'rag-data' / 'providers' / provider / 'excel'

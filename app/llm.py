@@ -2,7 +2,6 @@ import os
 import logging
 from typing import List
 
-OPENAI_KEY = os.environ.get('OPENAI_API_KEY')
 logger = logging.getLogger(__name__)
 
 
@@ -11,6 +10,8 @@ def call_llm_strict(question: str, context: str) -> str:
 
     Supports both the new `openai.OpenAI()` client API and older `openai.ChatCompletion.create`.
     """
+    # Read env at call time to pick up keys loaded after import (e.g., via dotenv)
+    OPENAI_KEY = os.environ.get('OPENAI_API_KEY')
     if not OPENAI_KEY:
         return 'Not available.'
     try:
@@ -52,3 +53,52 @@ def call_llm_strict(question: str, context: str) -> str:
     except Exception:
         logger.exception('LLM call failed')
         return 'Not available.'
+
+
+def call_llm_chat(message: str, context: str | None = None) -> str:
+    """General-purpose chat that can converse naturally.
+
+    If context is provided, it may be referenced, but the assistant is not restricted
+    to only the context. If no OPENAI key, return a simple canned response.
+    """
+    OPENAI_KEY = os.environ.get('OPENAI_API_KEY')
+    if not OPENAI_KEY:
+        # Simple canned response when no key is available
+        return "Hi! I'm here to help. Ask me anything about the provider or services."
+    try:
+        import openai
+        client = None
+        try:
+            client = openai.OpenAI(api_key=OPENAI_KEY)
+        except Exception:
+            try:
+                openai.api_key = OPENAI_KEY
+            except Exception:
+                pass
+
+        system = (
+            "You are a friendly AI assistant. Be conversational, clear, and helpful. "
+            "If the user asks about provider-specific info and you have context, use it; "
+            "otherwise answer normally. Avoid making up facts about specific documents if uncertain."
+        )
+        user_content = message if context is None else f"Context (optional):\n{context}\n\nUser: {message}"
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ]
+
+        if client is not None:
+            resp = client.chat.completions.create(model='gpt-4o-mini', messages=messages, max_tokens=512)
+            choice = resp.choices[0]
+            msg = getattr(choice, 'message', None)
+            if msg is not None:
+                content = getattr(msg, 'content', None)
+            else:
+                content = choice.get('message', {}).get('content') if isinstance(choice, dict) else str(choice)
+            return (content or '').strip()
+
+        resp = openai.ChatCompletion.create(model='gpt-4o-mini', messages=messages, max_tokens=512)
+        return resp['choices'][0]['message']['content'].strip()
+    except Exception:
+        logger.exception('LLM chat call failed')
+        return "Sorry, I'm having trouble responding right now."

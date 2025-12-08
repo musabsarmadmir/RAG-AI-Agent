@@ -1,4 +1,4 @@
-"""
+r"""
 Create test provider data and register a client mapping for quick local testing.
 
 Usage (PowerShell):
@@ -11,6 +11,10 @@ This will:
 """
 import sys
 from pathlib import Path
+# Ensure project root on sys.path so `app` imports work when running script directly
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 from app.utils import ensure_provider_dirs
 from app.app_db import set_client_provider
 import pandas as pd

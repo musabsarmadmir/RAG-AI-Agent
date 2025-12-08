@@ -8,6 +8,7 @@ from .app_db import get_client_provider
 from .embeddings import default_embedding_provider, get_default_embedding_model
 from .llm import call_llm_strict
 from .core.security import api_key_auth
+from .api.models import QueryRequest, QueryResponse, UploadStatus, HealthResponse, HealthProvider
 from sqlitedict import SqliteDict
 import faiss
 import numpy as np
@@ -27,7 +28,7 @@ app.add_middleware(
 )
 
 
-@app.get('/health')
+@app.get('/v1/health', response_model=HealthResponse)
 async def health():
     """Basic health check plus simple index stats."""
     providers = []
@@ -44,19 +45,19 @@ async def health():
                 })
     except Exception:
         providers = []
-    return JSONResponse({'status': 'ok', 'providers': providers})
+    return HealthResponse(status='ok', providers=[HealthProvider(**p) for p in providers])
 
 
-@app.post('/upload/provider/{provider}/metadata')
+@app.post('/v1/upload/provider/{provider}/metadata', response_model=UploadStatus)
 async def upload_metadata(provider: str, file: UploadFile = File(...), _auth=Depends(api_key_auth)):
     dirs = ensure_provider_dirs(PROVIDERS_DIR, provider)
     dest = dirs['excel'] / 'metadata.xlsx'
     content = await file.read()
     write_file(dest, content)
-    return JSONResponse({'status': 'saved', 'path': str(dest)})
+    return UploadStatus(status='saved', path=str(dest))
 
 
-@app.post('/upload/provider/{provider}/document')
+@app.post('/v1/upload/provider/{provider}/document', response_model=UploadStatus)
 async def upload_document(provider: str, file: UploadFile = File(...), _auth=Depends(api_key_auth)):
     dirs = ensure_provider_dirs(PROVIDERS_DIR, provider)
     if not file.filename:
@@ -65,10 +66,10 @@ async def upload_document(provider: str, file: UploadFile = File(...), _auth=Dep
     dest = dirs['docs'] / safe_name
     content = await file.read()
     write_file(dest, content)
-    return JSONResponse({'status': 'saved', 'path': str(dest)})
+    return UploadStatus(status='saved', path=str(dest))
 
 
-@app.post('/admin/rebuild-index/{provider}')
+@app.post('/v1/admin/rebuild-index/{provider}')
 async def rebuild_index(provider: str, _auth=Depends(api_key_auth)):
     dirs = ensure_provider_dirs(PROVIDERS_DIR, provider)
     # Run pipeline synchronously for simplicity
@@ -108,12 +109,10 @@ async def testing_create_fake_doc(provider: str):
     return JSONResponse({'status': 'fake_doc_created', 'path': str(dest)})
 
 
-@app.post('/query')
-async def query(payload: dict, _auth=Depends(api_key_auth)):
-    if 'client_id' not in payload or 'question' not in payload:
-        raise HTTPException(status_code=400, detail='client_id and question required')
-    client_id = int(payload['client_id'])
-    question = payload['question']
+@app.post('/v1/query', response_model=QueryResponse)
+async def query(payload: QueryRequest, _auth=Depends(api_key_auth)):
+    client_id = payload.client_id
+    question = payload.question
     provider = get_client_provider(client_id)
     if not provider:
         raise HTTPException(status_code=404, detail='assigned provider not found for client')
@@ -122,13 +121,23 @@ async def query(payload: dict, _auth=Depends(api_key_auth)):
     idx_path = dirs['index'] / 'faiss.bin'
     db_path = dirs['db'] / 'metadata.sqlite'
     if not idx_path.exists() or not db_path.exists():
-        raise HTTPException(status_code=400, detail='provider index or db not found; rebuild first')
+        missing = []
+        if not idx_path.exists():
+            missing.append(f"index file missing: {idx_path}")
+        if not db_path.exists():
+            missing.append(f"db file missing: {db_path}")
+        raise HTTPException(status_code=400, detail=f"Provider data incomplete; {', '.join(missing)}. Please rebuild the provider index.")
 
     # load provider-local sqlite
     with SqliteDict(str(db_path)) as pdb:
         vector_keys = pdb.get('vector_keys', [])
         # load faiss index
         index = faiss.read_index(str(idx_path))
+        # Validate index integrity
+        if index.ntotal == 0:
+            raise HTTPException(status_code=400, detail='Provider index is empty. Please rebuild the provider index.')
+        if vector_keys and len(vector_keys) != index.ntotal:
+            raise HTTPException(status_code=400, detail=f'Provider index and DB are out of sync (index count={index.ntotal}, db vectors={len(vector_keys)}). Please rebuild the provider index.')
         # determine embedding model recorded at index time (or use default)
         model_key = pdb.get('embedding_model') or get_default_embedding_model()
         try:
@@ -137,7 +146,8 @@ async def query(payload: dict, _auth=Depends(api_key_auth)):
             # If preferred provider is not available, surface error rather than silently using a different model
             raise HTTPException(status_code=500, detail=f'Embedding provider error for model {model_key}: {e}')
         qvec = np.array(qemb, dtype='float32').reshape(1, -1)
-        D, I = index.search(qvec, min(5, index.ntotal))
+        top_k = max(1, min(payload.top_k or 5, index.ntotal))
+        D, I = index.search(qvec, top_k)
         hits = []
         for dist, idx in zip(D[0], I[0]):
             if idx < 0:
@@ -148,7 +158,7 @@ async def query(payload: dict, _auth=Depends(api_key_auth)):
                 hits.append({'key': key, 'text': chunk['text'], 'score': float(dist)})
 
         if not hits:
-            return JSONResponse({'answer': 'Not available.', 'sources': []})
+            return QueryResponse(answer='Not available.', sources=[])
 
         # Build context from hits (provider-local only)
         context = '\n\n'.join([h['text'] for h in hits])
@@ -176,10 +186,10 @@ async def query(payload: dict, _auth=Depends(api_key_auth)):
             final = ' '.join(kept)
 
         sources = [h['key'] for h in hits]
-        return JSONResponse({'answer': final, 'sources': sources})
+        return QueryResponse(answer=final, sources=sources)
 
 
-@app.get('/providers')
+@app.get('/v1/providers')
 async def list_providers():
     base = PROVIDERS_DIR
     items = []
