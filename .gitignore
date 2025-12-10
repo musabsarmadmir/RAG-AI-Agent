@@ -58,6 +58,15 @@ local.env
 rag-data/**/index/**
 rag-data/**/db/**
 
+# Provider-generated raw data (can be recreated by scripts)
+rag-data/**/chunks/**
+rag-data/**/parsed/**
+rag-data/**/excel/**
+
+# sample-files generated backups and parsed spreadsheets
+sample-files/backups/**
+sample-files/Aimdtalk.xlsx
+
 # Uploaded files staging (if used)
 uploads/
 

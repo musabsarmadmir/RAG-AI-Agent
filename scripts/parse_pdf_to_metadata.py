@@ -13,6 +13,10 @@ import argparse
 import re
 import pandas as pd
 from PyPDF2 import PdfReader
+import shutil
+from datetime import datetime
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment
 
 # Ensure repo root is on sys.path so `app` package imports work when running this script directly
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,12 +106,59 @@ def main():
         print(f'  {i}. {s}')
 
     metadata = build_metadata_row(args.provider, services)
-
     dirs = ensure_provider_dirs(PROVIDERS_DIR, args.provider)
     out_path = dirs['excel'] / 'metadata.xlsx'
     df = pd.DataFrame([metadata])
     df.to_excel(out_path, index=False)
     print('Wrote metadata to', out_path)
+
+    # Also write into sample-files/Aimdtalk.xlsx under sheet '<provider>_parsed'
+    target = Path('sample-files') / 'Aimdtalk.xlsx'
+    sheet_name = f"{args.provider}_parsed"
+
+    # Backup existing target file
+    if target.exists():
+        backups_dir = target.parent / 'backups'
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+        backup_path = backups_dir / f'Aimdtalk.{ts}.xlsx'
+        shutil.copy2(str(target), str(backup_path))
+        print('Backed up existing Aimdtalk.xlsx to', backup_path)
+
+    # Write dataframe to target sheet, preserving other sheets
+    if target.exists():
+        # Load workbook and remove existing sheet if present
+        wb = load_workbook(str(target))
+        if sheet_name in wb.sheetnames:
+            std = wb[sheet_name]
+            wb.remove(std)
+            wb.save(str(target))
+        with pd.ExcelWriter(str(target), engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    else:
+        # Create new workbook and write sheet
+        with pd.ExcelWriter(str(target), engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    print('Wrote parsed metadata to', target, 'sheet', sheet_name)
+
+    # Simple formatting: set column widths and wrap services_summary
+    try:
+        wb = load_workbook(str(target))
+        ws = wb[sheet_name]
+        # Adjust columns: name (A), email (B), phone (C), services_summary (D), charges (E)
+        ws.column_dimensions['A'].width = 30
+        ws.column_dimensions['B'].width = 30
+        ws.column_dimensions['C'].width = 15
+        ws.column_dimensions['D'].width = 80
+        ws.column_dimensions['E'].width = 25
+        # Wrap text for services_summary column (D)
+        for cell in ws['D']:
+            cell.alignment = Alignment(wrap_text=True)
+        wb.save(str(target))
+        print('Applied simple formatting to', target, 'sheet', sheet_name)
+    except Exception as e:
+        print('Warning: failed to apply formatting to', target, e)
 
 
 if __name__ == '__main__':
