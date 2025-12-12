@@ -19,9 +19,6 @@ def call_llm_strict(question: str, context: str) -> str:
         # Try new OpenAI client first
         client = None
         try:
-            # Respect environment override for LLM model name
-            # default model configured in app.config as LLM_MODEL
-            from .config import LLM_MODEL
             client = openai.OpenAI(api_key=OPENAI_KEY)
         except Exception:
             try:
@@ -39,9 +36,8 @@ def call_llm_strict(question: str, context: str) -> str:
         ]
 
         if client is not None:
-            # new client API - use configured model
-            model_name = os.environ.get('LLM_MODEL') or 'gpt-4o-mini'
-            resp = client.chat.completions.create(model=model_name, messages=messages, max_tokens=512)
+            # new client API
+            resp = client.chat.completions.create(model='gpt-4o-mini', messages=messages, max_tokens=512)
             # resp.choices[0].message.content or dict style
             choice = resp.choices[0]
             msg = getattr(choice, 'message', None)
@@ -52,8 +48,7 @@ def call_llm_strict(question: str, context: str) -> str:
             return (content or '').strip()
 
         # fallback to older openai library interface
-        model_name = os.environ.get('LLM_MODEL') or 'gpt-4o-mini'
-        resp = openai.ChatCompletion.create(model=model_name, messages=messages, max_tokens=512)
+        resp = openai.ChatCompletion.create(model='gpt-4o-mini', messages=messages, max_tokens=512)
         return resp['choices'][0]['message']['content'].strip()
     except Exception:
         logger.exception('LLM call failed')
@@ -93,8 +88,7 @@ def call_llm_chat(message: str, context: str | None = None) -> str:
         ]
 
         if client is not None:
-            model_name = os.environ.get('LLM_MODEL') or 'gpt-4o-mini'
-            resp = client.chat.completions.create(model=model_name, messages=messages, max_tokens=512)
+            resp = client.chat.completions.create(model='gpt-4o-mini', messages=messages, max_tokens=512)
             choice = resp.choices[0]
             msg = getattr(choice, 'message', None)
             if msg is not None:
@@ -103,8 +97,7 @@ def call_llm_chat(message: str, context: str | None = None) -> str:
                 content = choice.get('message', {}).get('content') if isinstance(choice, dict) else str(choice)
             return (content or '').strip()
 
-        model_name = os.environ.get('LLM_MODEL') or 'gpt-4o-mini'
-        resp = openai.ChatCompletion.create(model=model_name, messages=messages, max_tokens=512)
+        resp = openai.ChatCompletion.create(model='gpt-4o-mini', messages=messages, max_tokens=512)
         return resp['choices'][0]['message']['content'].strip()
     except Exception:
         logger.exception('LLM chat call failed')

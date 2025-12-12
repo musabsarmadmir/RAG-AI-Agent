@@ -4,26 +4,40 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_SBERT = "all-MiniLM-L6-v2"
+
 
 def get_default_embedding_model() -> str:
     """Return a string key for the preferred embedding model on this machine.
 
-    Format: '<provider>:<model-name>' e.g. 'openai:text-embedding-3-small'. This is used to record what was used at index time.
+    Format: '<provider>:<model-name>' e.g. 'openai:text-embedding-3-small' or
+    'sbert:all-MiniLM-L6-v2'. This is used to record what was used at index time.
     """
-    # Allow explicit override via environment (recommended): EMBEDDING_MODEL
-    if os.environ.get('EMBEDDING_MODEL'):
-        val = os.environ.get('EMBEDDING_MODEL')
-        if not val.startswith('openai:'):
-            raise RuntimeError("EMBEDDING_MODEL must be an OpenAI model key (start with 'openai:') when embeddings are configured as OpenAI-only")
-        return val
-    # Enforce OpenAI-only embeddings: require OPENAI_API_KEY
-    if not os.environ.get('OPENAI_API_KEY'):
-        raise RuntimeError('OPENAI_API_KEY not set: this deployment requires OpenAI embeddings')
-    # default OpenAI embeddings model
-    return "openai:text-embedding-3-small"
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai:text-embedding-3-small"
+    return f"sbert:{DEFAULT_SBERT}"
 
 
 class EmbeddingProvider:
+    """Model-aware embedding utility.
+
+    Usage:
+      - call `embed_texts_with_model(model_key, texts)` to request embeddings
+        from a specific provider/model.
+      - call `get_default_embedding_model()` to decide what to use when building
+        an index.
+    """
+
+    def __init__(self):
+        self.sbert_models = {}
+
+    def _ensure_sbert(self, model_name: str):
+        from sentence_transformers import SentenceTransformer
+
+        if model_name not in self.sbert_models:
+            logger.info("Loading SBERT model %s", model_name)
+            self.sbert_models[model_name] = SentenceTransformer(model_name)
+        return self.sbert_models[model_name]
 
     def embed_texts_with_model(self, model_key: str, texts: List[str]) -> List[List[float]]:
         """Embed texts using the named model key.
@@ -53,8 +67,17 @@ class EmbeddingProvider:
                 except Exception as e:
                     logger.exception("OpenAI embedding call failed: %s", e)
                     raise
-        # Only OpenAI model keys are supported in this deployment
-        raise ValueError(f"Unsupported embedding model key: {model_key}; this deployment only supports OpenAI embedding models (keys starting with 'openai:')")
+
+        if model_key.startswith("sbert:"):
+            model_name = model_key.split(":", 1)[1]
+            model = self._ensure_sbert(model_name)
+            embs = model.encode(texts, show_progress_bar=False)
+            # sentence-transformers may return numpy array
+            if hasattr(embs, 'tolist'):
+                embs = embs.tolist()
+            return [list(map(float, e)) for e in embs]
+
+        raise ValueError(f"Unknown embedding model key: {model_key}")
 
     def embed_text_with_model(self, model_key: str, text: str) -> List[float]:
         return self.embed_texts_with_model(model_key, [text])[0]
