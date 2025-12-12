@@ -46,8 +46,8 @@ desktop.ini
 local.env
 .env.*
 
-# Firebase service account (tracked intentionally)
-!rag-agent-firestore.json
+# Firebase service account (keep local only)
+rag-agent-firestore.json
 
 # Jupyter/Notebooks
 .ipynb_checkpoints/
