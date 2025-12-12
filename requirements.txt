@@ -9,3 +9,5 @@ pandas
 PyPDF2
 python-docx
 openpyxl
+google-cloud-firestore
+python-dotenv

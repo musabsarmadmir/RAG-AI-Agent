@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from pathlib import Path
 from .config import PROVIDERS_DIR, CORS_ORIGINS
 from .utils import ensure_provider_dirs, write_file
-from .pipeline import build_index_for_provider
+from .pipeline import build_index_for_provider, build_index_for_provider_index
 from .app_db import get_client_provider
 from .embeddings import default_embedding_provider, get_default_embedding_model
 from .llm import call_llm_strict
@@ -15,6 +15,7 @@ import numpy as np
 import os
 import pandas as pd
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional
 
 app = FastAPI(title="AI Agent - Provider Query Service")
 
@@ -71,10 +72,23 @@ async def upload_document(provider: str, file: UploadFile = File(...), _auth=Dep
 
 @app.post('/v1/admin/rebuild-index/{provider}')
 async def rebuild_index(provider: str, _auth=Depends(api_key_auth)):
-    dirs = ensure_provider_dirs(PROVIDERS_DIR, provider)
-    # Run pipeline synchronously for simplicity
-    build_index_for_provider(provider, PROVIDERS_DIR)
-    return JSONResponse({'status': 'rebuild_finished', 'provider': provider})
+    # allow numeric provider index or provider name
+    if str(provider).isdigit():
+        # resolve numeric -> provider name for response
+        try:
+            from . import provider_index as _pi
+
+            resolved = _pi.get_provider_by_index(int(provider))
+        except Exception:
+            resolved = None
+        build_index_for_provider_index(int(provider), PROVIDERS_DIR)
+        provider_name = resolved or str(provider)
+    else:
+        dirs = ensure_provider_dirs(PROVIDERS_DIR, provider)
+        # Run pipeline synchronously for simplicity
+        build_index_for_provider(provider, PROVIDERS_DIR)
+        provider_name = provider
+    return JSONResponse({'status': 'rebuild_finished', 'provider': provider_name})
 
 
 @app.post('/testing/fake-metadata/{provider}')
@@ -198,4 +212,89 @@ async def list_providers():
             if p.is_dir():
                 items.append(p.name)
     return JSONResponse({'providers': items})
+
+
+@app.get('/v1/provider-indices')
+async def list_provider_indices(_auth=Depends(api_key_auth)):
+    """List numeric provider index -> provider name mappings."""
+    try:
+        from . import provider_index as _pi
+
+        mappings = _pi.list_mappings()
+    except Exception:
+        mappings = {}
+    return JSONResponse({'mappings': mappings})
+
+
+@app.post('/v1/provider-indices/{index}')
+async def set_provider_index_endpoint(index: int, payload: dict, _auth=Depends(api_key_auth)):
+    """Set provider index mapping. JSON body: {"provider": "Fatima", "overwrite": true}
+    Returns saved mapping."""
+    provider = payload.get('provider')
+    overwrite = bool(payload.get('overwrite'))
+    if not provider:
+        raise HTTPException(status_code=400, detail='provider is required')
+    try:
+        from . import provider_index as _pi
+
+        _pi.set_provider_index(provider, index, overwrite=overwrite)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse({'index': index, 'provider': provider})
+
+
+@app.get('/v1/provider-indices/{index}')
+async def get_provider_index(index: int, _auth=Depends(api_key_auth)):
+    try:
+        from . import provider_index as _pi
+
+        provider = _pi.get_provider_by_index(index)
+    except Exception:
+        provider = None
+    if not provider:
+        raise HTTPException(status_code=404, detail='mapping not found')
+    return JSONResponse({'index': index, 'provider': provider})
+
+
+@app.delete('/v1/provider-indices/{index}')
+async def delete_provider_index(index: int, _auth=Depends(api_key_auth)):
+    try:
+        from . import provider_index as _pi
+
+        m = _pi.load_index_map()
+        sindex = str(index)
+        if sindex in m:
+            del m[sindex]
+            _pi.save_index_map(m)
+            return JSONResponse({'deleted': True})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    raise HTTPException(status_code=404, detail='mapping not found')
+
+
+@app.post('/v1/client/{client_id}/assign-index')
+async def assign_client_index(client_id: int, payload: dict, _auth=Depends(api_key_auth)):
+    """Assign a numeric provider index to a client. JSON body: {"provider_index": 48}"""
+    provider_index_value = payload.get('provider_index')
+    if provider_index_value is None:
+        raise HTTPException(status_code=400, detail='provider_index required')
+    try:
+        from .app_db import set_client_provider_index
+
+        set_client_provider_index(client_id, int(provider_index_value))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse({'client_id': client_id, 'provider_index': int(provider_index_value)})
+
+
+@app.get('/v1/client/{client_id}/provider')
+async def get_client_provider_endpoint(client_id: int, _auth=Depends(api_key_auth)):
+    try:
+        from .app_db import get_client_provider, get_client_provider_index
+
+        provider = get_client_provider(client_id)
+        index = get_client_provider_index(client_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return JSONResponse({'client_id': client_id, 'provider': provider, 'provider_index': index})
 

@@ -40,3 +40,5 @@ else:
 EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL')
 # LLM model to use for chat/completions, default is 'gpt-4o-mini' but can be overridden
 LLM_MODEL = os.environ.get('LLM_MODEL', 'gpt-4o-mini')
+# Firestore toggle: set to '1' to enable Firestore-backed provider index storage
+FIRESTORE_ENABLED = os.environ.get('FIRESTORE_ENABLED') in ('1', 'true', 'True')

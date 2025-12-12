@@ -116,3 +116,15 @@ def build_index_for_provider(provider: str, base_dir: Path):
             db['vector_keys'] = mapping
 
     return True
+
+
+def build_index_for_provider_index(provider_index: int, base_dir: Path):
+    """Resolve numeric provider index to provider name and build its index."""
+    try:
+        from . import provider_index as _pi
+    except Exception:
+        raise RuntimeError('provider_index module not available')
+    provider = _pi.get_provider_by_index(int(provider_index))
+    if not provider:
+        raise RuntimeError(f'No provider found for index {provider_index}')
+    return build_index_for_provider(provider, base_dir)
