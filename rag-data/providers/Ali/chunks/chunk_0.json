@@ -1,0 +1,4 @@
+{
+  "id": 0,
+  "text": "{\"name\": \"Ali Test Provider\", \"email\": \"contact@Ali.example\", \"phone\": \"555-0100\", \"services_summary\": \"Test services: alpha, beta\", \"charges\": \"Variable\"} Provider Ali sample document. This document is used to test the pipeline. Contains sample content about services, fees and contact details."
+}

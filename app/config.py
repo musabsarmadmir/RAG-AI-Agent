@@ -34,3 +34,6 @@ if _cors_raw:
 	CORS_ORIGINS = [o.strip() for o in _cors_raw.split(',') if o.strip()]
 else:
 	CORS_ORIGINS = ["*"]
+
+# Firestore toggle: set to '1' or 'true' to enable Firestore-backed provider index storage
+FIRESTORE_ENABLED = os.environ.get('FIRESTORE_ENABLED') in ("1", "true", "True")

@@ -25,6 +25,9 @@ from pathlib import Path
 
 import requests
 
+from app import provider_index
+from app.app_db import set_client_provider_index
+
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 
@@ -66,8 +69,18 @@ def run_tests():
     if not api_key:
         print('WARNING: API_KEY not set in environment; upload/rebuild/query will likely fail')
 
-    # Create provider and files
+    # Create provider and files (local provider name mapping)
     run_create_test_provider('Fatima', 100)
+
+    # Optionally wire Firestore-backed provider index and numeric client mapping
+    # This makes the query path go: client_id -> provider_index (Sqlite) -> Firestore (index->provider)
+    try:
+        idx = int(os.environ.get('TEST_PROVIDER_INDEX', '48'))
+        provider_index.set_provider_index('Fatima', idx, overwrite=True)
+        set_client_provider_index(100, idx)
+        print(f'Set Firestore provider index {idx} for Fatima and client 100')
+    except Exception as e:
+        print('WARNING: Failed to set Firestore provider index mapping:', e)
 
     # Call testing endpoints to create fake metadata/doc
     for ep in [f'/testing/fake-metadata/Fatima', f'/testing/fake-doc/Fatima']:

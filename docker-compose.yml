@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  rag-api:
+    build: .
+    container_name: rag-ai-agent
+    ports:
+      - "8000:8000"
+    environment:
+      # Basic API key and CORS
+      API_KEY: "dev-key-123"
+      CORS_ORIGINS: "http://localhost:3000, http://127.0.0.1:3000"
+
+      # Firestore integration
+      FIRESTORE_ENABLED: "1"
+      GOOGLE_APPLICATION_CREDENTIALS: "/secrets/rag-agent-firestore.json"
+
+      # OpenAI key (set via environment, NOT committed)
+      OPENAI_API_KEY: "YOUR_OPENAI_KEY_HERE"
+
+    volumes:
+      # Persist provider data (indices, db, docs) on the host
+      - ./rag-data:/app/rag-data
+
+      # Mount Firestore service account JSON from host into container
+      # Put your JSON at ./secrets/rag-agent-firestore.json on the host.
+      - ./secrets/rag-agent-firestore.json:/secrets/rag-agent-firestore.json:ro
+
+    # For local development you can enable auto-reload by overriding the command:
+    # command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
