@@ -252,3 +252,94 @@ docker compose up -d  # restart with zero‑downtime (Compose recreates the cont
 ```
 
 Because `rag-data/` and `secrets/` are mounted as volumes, indices and credentials will persist across container rebuilds.
+
+## 9. GitHub integration – building and deploying Docker images
+
+You can use GitHub to build and store your Docker images, then pull and run them on your server.
+
+### 9.1. Publish images to GitHub Container Registry (GHCR)
+
+1. In GitHub, create a **Personal Access Token (classic)** or **fine‑grained token** with `write:packages` and `read:packages`.
+2. On your machine (or CI runner), authenticate Docker to GHCR:
+
+```bash
+echo "YOUR_GITHUB_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+3. From the repo root, build and tag the image for GHCR:
+
+```bash
+cd /path/to/RAG-AI-Agent
+IMAGE="ghcr.io/YOUR_GITHUB_USERNAME/rag-ai-agent:latest"
+
+docker build -t "$IMAGE" .
+docker push "$IMAGE"
+```
+
+You now have a versioned image hosted in GitHub Container Registry.
+
+### 9.2. Point your server to the GHCR image
+
+On the target server, instead of building locally, you can pull from GHCR.
+
+1. Log in to GHCR on the server (same `docker login ghcr.io ...` command).
+2. In `docker-compose.yml` on the server, override the service to use the remote image, for example:
+
+```yaml
+services:
+  rag-api:
+    image: ghcr.io/YOUR_GITHUB_USERNAME/rag-ai-agent:latest
+    # ... keep volumes and environment as before ...
+```
+
+3. Deploy/update:
+
+```bash
+cd /opt/rag-ai-agent
+docker compose pull
+docker compose up -d
+```
+
+This way, updating the app becomes: build + push from your dev/CI environment, then `docker compose pull && docker compose up -d` on the server.
+
+### 9.3. Automating builds with GitHub Actions (optional)
+
+You can automate the image build and push on every push to `main` using a GitHub Actions workflow like this (place in `.github/workflows/docker.yml`):
+
+```yaml
+name: Build and publish Docker image
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/rag-ai-agent:latest
+```
+
+After this is set up:
+
+- Every push to `main` builds and pushes `ghcr.io/<owner>/rag-ai-agent:latest`.
+- Your server deploy step stays the same (`docker compose pull && docker compose up -d`), but now updates are triggered by GitHub pushes rather than manual local builds.
